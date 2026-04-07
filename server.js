@@ -16,7 +16,8 @@ async function startSock() {
 
   sock = makeWASocket({
     auth: state,
-    logger: P({ level: "silent" })
+    logger: P({ level: "silent" }),
+    printQRInTerminal: true
   });
 
   sock.ev.on("creds.update", saveCreds);
@@ -34,12 +35,15 @@ async function startSock() {
 
     if (connection === "close") {
       console.log("WhatsApp desconectado");
+      console.log(lastDisconnect);
 
       const shouldReconnect =
         lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
 
       if (shouldReconnect) {
-        startSock();
+        setTimeout(() => {
+          startSock();
+        }, 5000);
       }
     }
   });
@@ -82,6 +86,12 @@ app.post("/send", async (req, res) => {
     if (!telefono || !mensaje) {
       return res.status(400).json({
         error: "Faltan telefono o mensaje"
+      });
+    }
+
+    if (!sock) {
+      return res.status(500).json({
+        error: "WhatsApp no conectado todavía"
       });
     }
 
