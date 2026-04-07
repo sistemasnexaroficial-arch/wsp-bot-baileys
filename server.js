@@ -17,7 +17,7 @@ async function startSock() {
   sock = makeWASocket({
     auth: state,
     logger: P({ level: "silent" }),
-    printQRInTerminal: true
+    browser: ["Chrome", "Desktop", "1.0.0"]
   });
 
   sock.ev.on("creds.update", saveCreds);
