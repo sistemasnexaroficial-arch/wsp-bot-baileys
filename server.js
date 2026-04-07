@@ -15,9 +15,10 @@ async function startSock() {
   const { state, saveCreds } = await useMultiFileAuthState("auth_info");
 
   sock = makeWASocket({
-    auth: state,
-    logger: P({ level: "silent" }),
-    browser: ["Chrome", "Desktop", "1.0.0"]
+  auth: state,
+  printQRInTerminal: false,
+  browser: ['Ubuntu', 'Chrome', '20.0.04'],
+  logger: P({ level: 'silent' }),
   });
 
   sock.ev.on("creds.update", saveCreds);
