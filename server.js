@@ -1,111 +1,110 @@
-const express = require('express');
-const {
-  default: makeWASocket,
-  useMultiFileAuthState,
-  DisconnectReason
-} = require('@whiskeysockets/baileys');
-const P = require('pino');
-const QRCode = require('qrcode-terminal');
+const express = require("express");
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require("@whiskeysockets/baileys");
+const P = require("pino");
+const qrcode = require("qrcode");
 
 const app = express();
 app.use(express.json());
 
-let sock = null;
-let conectado = false;
-let ultimoQR = null;
+const PORT = process.env.PORT || 3000;
 
-async function iniciarWhatsApp() {
-  const { state, saveCreds } = await useMultiFileAuthState('auth_info');
+let sock;
+let qrCodeData = "";
+
+async function startSock() {
+  const { state, saveCreds } = await useMultiFileAuthState("auth_info");
 
   sock = makeWASocket({
     auth: state,
-    logger: P({ level: 'silent' })
+    logger: P({ level: "silent" })
   });
 
-  sock.ev.on('creds.update', saveCreds);
+  sock.ev.on("creds.update", saveCreds);
 
-  sock.ev.on('connection.update', async (update) => {
-    const { connection, qr, lastDisconnect } = update;
-
+  sock.ev.on("connection.update", async ({ connection, lastDisconnect, qr }) => {
     if (qr) {
-      ultimoQR = qr;
-      console.log('📱 QR generado');
-      QRCode.generate(qr, { small: true });
+      qrCodeData = qr;
+      console.log("Nuevo QR generado");
     }
 
-    if (connection === 'open') {
-      conectado = true;
-      console.log('✅ WhatsApp conectado');
+    if (connection === "open") {
+      console.log("WhatsApp conectado");
+      qrCodeData = "";
     }
 
-    if (connection === 'close') {
-      conectado = false;
+    if (connection === "close") {
+      console.log("WhatsApp desconectado");
 
       const shouldReconnect =
         lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
 
-      console.log('❌ WhatsApp desconectado');
-
       if (shouldReconnect) {
-        iniciarWhatsApp();
+        startSock();
       }
     }
   });
 }
 
-iniciarWhatsApp();
+startSock();
 
-app.get('/', (req, res) => {
-  res.send('Bot funcionando');
+app.get("/", (req, res) => {
+  res.send("Bot funcionando");
 });
 
-app.get('/status', (req, res) => {
-  res.json({
-    conectado
-  });
+app.get("/qr", async (req, res) => {
+  try {
+    if (!qrCodeData) {
+      return res.send("QR todavía no disponible. Esperá unos segundos y recargá.");
+    }
+
+    const qrImage = await qrcode.toDataURL(qrCodeData);
+
+    res.send(`
+      <html>
+        <body style="display:flex;justify-content:center;align-items:center;height:100vh;background:#111;">
+          <div style="text-align:center;">
+            <h2 style="color:white;">Escaneá este QR con WhatsApp</h2>
+            <img src="${qrImage}" />
+          </div>
+        </body>
+      </html>
+    `);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send("Error generando QR");
+  }
 });
 
-app.post('/send', async (req, res) => {
+app.post("/send", async (req, res) => {
   try {
     const { telefono, mensaje } = req.body;
 
-    if (!conectado || !sock) {
-      return res.status(500).json({
-        success: false,
-        error: 'WhatsApp no conectado'
-      });
-    }
-
     if (!telefono || !mensaje) {
       return res.status(400).json({
-        success: false,
-        error: 'Faltan telefono o mensaje'
+        error: "Faltan telefono o mensaje"
       });
     }
 
-    const numero = telefono.toString().replace(/\D/g, '') + '@s.whatsapp.net';
+    const numero = telefono.includes("@s.whatsapp.net")
+      ? telefono
+      : `${telefono}@s.whatsapp.net`;
 
-    await sock.sendMessage(numero, {
-      text: mensaje
-    });
+    await sock.sendMessage(numero, { text: mensaje });
 
     res.json({
-      success: true,
-      numero,
-      mensaje: 'Mensaje enviado'
+      ok: true,
+      mensaje: "Mensaje enviado"
     });
   } catch (error) {
-    console.log(error);
+    console.error(error);
 
     res.status(500).json({
-      success: false,
-      error: error.message
+      ok: false,
+      error: "No se pudo enviar el mensaje"
     });
   }
 });
 
-const PORT = process.env.PORT || 3000;
-
 app.listen(PORT, () => {
-  console.log("🚀 Servidor corriendo en puerto ${PORT}");
+  console.log(`🚀 Servidor corriendo en puerto ${PORT}`);
 });
